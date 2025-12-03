@@ -38,6 +38,24 @@ typedef struct plugin_uuid
 unsigned char uuid[16];
 } plugin_uuid;
 
+#define MAX_PLUGIN_PLANES (4)
+
+typedef struct PluginComponent
+{
+    // pointer to each plane present
+    void *data;
+
+    // size in bytes of each element,
+    uint32_t stride;
+
+    // width in elements
+    uint32_t width;
+
+    // size of oen element (pixel, audio sample)
+    uint32_t bytes_per_element;
+
+} PluginComponent;
+
 typedef struct PluginFrame
 {
     // DataType held in Frame
@@ -72,11 +90,8 @@ typedef struct PluginFrame
     // sizeof underlying buffer
     uint32_t buffer_size;
 
-    // pointer to each plane present
-    void *data[4];
-
-    // size in bytes of each row for each component present
-    uint32_t stride[4];
+    // up to 4 components
+    PluginComponent components[MAX_PLUGIN_PLANES];
 
     // as ASCIIZ string in format
     // "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
@@ -208,5 +223,12 @@ buffer_size: Size of the buffer
 */
 typedef int32_t (*query_config_fn)(PLUGIN_HANDLE Handle, char *buffer,
                                    const uint32_t buffer_size);
+
+/*
+Get frames queued in stream
+Return: < 0 error code, >= 0 number of frames queued
+Handle: Handle for stream to access
+*/
+typedef int64_t (*get_queue_depth_fn)(PLUGIN_HANDLE handle);
 
 #endif  // PLUGINS_H_
