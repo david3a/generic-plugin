@@ -54,6 +54,9 @@ typedef struct PluginComponent
     // size of oen element (pixel, audio sample)
     uint32_t bytes_per_element;
 
+    // number of bits in each component
+    uint32_t bit_depth;
+    
 } PluginComponent;
 
 typedef struct PluginFrame
@@ -102,9 +105,6 @@ typedef struct PluginFrame
 
     // time of frames creation at source (camera etc) in TAI ns since 1970
     uint64_t origination_time;
-
-    // number of bits in each component
-    uint32_t bit_depth;
 
     // number of planes active
     uint32_t planes;
