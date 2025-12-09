@@ -51,7 +51,7 @@ typedef struct PluginComponent
     // width in elements
     uint32_t width;
 
-    // size of oen element (pixel, audio sample)
+    // size of one element (pixel, audio sample)
     uint32_t bytes_per_element;
 
     // number of bits in each component
