@@ -81,6 +81,9 @@ typedef struct PluginFrame
     // other components
     uint8_t has_alpha;
 
+    // if non zero (true) indicates the data is compressed and the format indicates the compression 
+    uint8_t is_compressed;
+
     // pixel aspect ratio
     PluginRational aspect_ratio;
 
