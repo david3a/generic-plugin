@@ -106,6 +106,10 @@ typedef struct PluginFrame
     // time of frames creation at source (camera etc) in TAI ns since 1970
     uint64_t origination_time;
 
+    // time of intended use within a production in TAI ns since 1970
+    // default is that it would be the same as the origination time
+    uint64_t production_time;
+    
     // number of planes active
     uint32_t planes;
 
