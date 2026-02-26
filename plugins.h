@@ -59,6 +59,12 @@ typedef struct PluginComponent
     
 } PluginComponent;
 
+#define FRAME_TYPE_MASK (0xf)
+#define FRAME_TYPE_I_FRAME (0x1)
+#define FRAME_TYPE_B_FRAME (0x2)
+#define FRAME_TYPE_P_FRAME (0x3)
+#define FRAME_TYPE_KEY_FRAME (0x10)
+
 typedef struct PluginFrame
 {
     // DataType held in Frame
@@ -89,6 +95,9 @@ typedef struct PluginFrame
 
     // format name
     char format[32];
+
+    // binary flags, initialy just masked with FRAME_TYPE_MASK and used to store I, B, P, can be extended, KEY FRAME also defined
+    uint32_t flags;
 
     // underlying buffer, all data pointers will be within this
     void *buffer;
