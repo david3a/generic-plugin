@@ -56,7 +56,7 @@ typedef struct PluginComponent
 
     // number of bits in each component
     uint32_t bit_depth;
-    
+
 } PluginComponent;
 
 #define FRAME_TYPE_MASK (0xf)
@@ -135,7 +135,7 @@ typedef struct PluginFrame
     // other components
     uint8_t has_alpha;
 
-    // if non zero (true) indicates the data is compressed and the format indicates the compression 
+    // if non zero (true) indicates the data is compressed and the format indicates the compression
     uint8_t is_compressed;
 
     // pixel aspect ratio
@@ -169,7 +169,7 @@ typedef struct PluginFrame
     // time of intended use within a production in TAI ns since 1970
     // default is that it would be the same as the origination time
     uint64_t production_time;
-    
+
     // number of planes active
     uint32_t planes;
 
