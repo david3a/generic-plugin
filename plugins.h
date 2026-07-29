@@ -13,6 +13,11 @@
 #include <stdint.h>
 #include <uuid/uuid.h>
 
+/* C++ compatibility: _Static_assert is C11; C++ uses static_assert. */
+#ifdef __cplusplus
+#define _Static_assert static_assert
+#endif
+
 typedef struct PluginRational
 {
     uint64_t Numerator;
@@ -56,7 +61,7 @@ typedef struct PluginComponent
 
     // number of bits in each component
     uint32_t bit_depth;
-    
+
 } PluginComponent;
 
 #define FRAME_TYPE_MASK (0xf)
@@ -64,6 +69,54 @@ typedef struct PluginComponent
 #define FRAME_TYPE_B_FRAME (0x2)
 #define FRAME_TYPE_P_FRAME (0x3)
 #define FRAME_TYPE_KEY_FRAME (0x10)
+
+/* ── Frame stage trace ──────────────────────────────────────────────────
+ * Each processing step appends one entry, so a frame's whole lifetime can be
+ * reconstructed wherever the chain ends:
+ *
+ *   leave_ns - enter_ns              wall time inside the stage
+ *   next.enter_ns - leave_ns         dwell BETWEEN stages (e.g. sat in a VDI ring)
+ *   (leave_ns - enter_ns) - processing_ns
+ *                                    time the stage spent waiting rather than
+ *                                    working: lock contention, pacing, spinning
+ *
+ * Both timestamps are required. Deriving a stage's duration from the NEXT
+ * stage's enter_ns would silently fold the inter-stage dwell into it, and that
+ * dwell is the whole point.
+ */
+#define MAX_PLUGIN_TRACE_STEPS (16)
+#define PLUGIN_TRACE_SCHEMA (1)
+#define PLUGIN_TRACE_FLAG_TRUNCATED (0x1u)
+
+/* stage_id packs the stage in the low 32 bits and the instance in the high 32,
+ * so an entry says WHICH compositor or player produced it without costing extra
+ * bytes. Use the macros; do not hand-roll the shifts. */
+#define PHRAME_STAGE_PACK(stage, instance) \
+    (((uint64_t)(uint32_t)(instance) << 32) | (uint64_t)(uint32_t)(stage))
+#define PHRAME_STAGE_OF(id) ((uint32_t)((uint64_t)(id) & 0xffffffffu))
+#define PHRAME_INSTANCE_OF(id) ((uint32_t)((uint64_t)(id) >> 32))
+
+typedef enum
+{
+    pstUnknown = 0,
+    pstDecode,        /* tams-player: decoded from stored media */
+    pstPlayerWrite,   /* tams-player: handed to VDI */
+    pstSwitch,        /* phrame_switch */
+    pstComposite,     /* phrame_compositor */
+    pstMix,           /* phrame_mixer_connector */
+    pstOverlay,       /* phrame_overlay */
+    pstEncodeSubmit,  /* phrame-webrtc-session: submitted to the encoder */
+    pstPacketOut      /* phrame-webrtc-session: RTP packet emitted */
+} PluginStageId;
+
+typedef struct PluginFrameTrace
+{
+    uint64_t enter_ns;       /* TAI ns wall clock on entry to this stage */
+    uint64_t leave_ns;       /* TAI ns wall clock on exit; 0 = never completed */
+    uint64_t processing_ns;  /* CPU time expended (CLOCK_THREAD_CPUTIME_ID).
+                              * NOT leave_ns - enter_ns. 0 = not measured. */
+    uint64_t stage_id;       /* PHRAME_STAGE_PACK(PluginStageId, instance) */
+} PluginFrameTrace;
 
 typedef struct PluginFrame
 {
@@ -87,7 +140,7 @@ typedef struct PluginFrame
     // other components
     uint8_t has_alpha;
 
-    // if non zero (true) indicates the data is compressed and the format indicates the compression 
+    // if non zero (true) indicates the data is compressed and the format indicates the compression
     uint8_t is_compressed;
 
     // pixel aspect ratio
@@ -121,7 +174,7 @@ typedef struct PluginFrame
     // time of intended use within a production in TAI ns since 1970
     // default is that it would be the same as the origination time
     uint64_t production_time;
-    
+
     // number of planes active
     uint32_t planes;
 
@@ -133,6 +186,19 @@ typedef struct PluginFrame
 
     // log message for tracing, store messages here
     char LogMessage[256];
+
+    /* count of trace steps used */
+    uint32_t trace_steps_used;
+
+    /* These two occupy alignment padding that existed anyway — they are free.
+     * trace_schema is asserted by BOTH C++ and the hand-written Rust mirror in
+     * phrame-common-rust/src/lib.rs; libvdi.so also ships prebuilt via the
+     * plugin-libs registry, so a layout disagreement is otherwise silent. */
+    uint16_t trace_schema;
+    uint16_t trace_flags;
+
+    /* filled in by each step a frame is processed through */
+    PluginFrameTrace trace_steps[MAX_PLUGIN_TRACE_STEPS];
 
 } PluginFrame;
 
