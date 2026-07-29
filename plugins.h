@@ -13,11 +13,6 @@
 #include <stdint.h>
 #include <uuid/uuid.h>
 
-/* C++ compatibility: _Static_assert is C11; C++ uses static_assert. */
-#ifdef __cplusplus
-#define _Static_assert static_assert
-#endif
-
 typedef struct PluginRational
 {
     uint64_t Numerator;
