@@ -113,6 +113,68 @@ typedef struct PluginFrameTrace
     uint64_t stage_id;       /* PHRAME_STAGE_PACK(PluginStageId, instance) */
 } PluginFrameTrace;
 
+/* ── Contributing-input identities ──────────────────────────────────────
+ * A multi-input stage's output frame is a NEW frame in a NEW stream, so its own
+ * frame_index is correctly its own output counter. That leaves the contributing
+ * inputs' media identities with nowhere to live, and the program monitor cannot
+ * say which MEDIA frame it is showing without them.
+ *
+ * The merge rule here is CONCATENATE, not select. That is what makes this a
+ * separate mechanism from the stage trace rather than a reuse of it:
+ * phrame_trace_inherit_oldest returns exactly ONE frame, which is right for a
+ * trace ("a composite is only as fresh as its stalest source") and wrong for
+ * identity (a composite can show two players at once, each at its own
+ * origination_time, and naming one would describe half the screen).
+ *
+ * Fixed cap rather than a growable list, the same trade the trace makes: this
+ * struct crosses a C ABI into a prebuilt libvdi.so and a hand-written Rust
+ * mirror, so it has to be POD with a layout both sides can assert. Real configs
+ * declare 2-4 panels; 8 is generous. Overflow sets
+ * PLUGIN_INPUTS_FLAG_TRUNCATED rather than dropping silently.
+ */
+#define MAX_PLUGIN_FRAME_INPUTS (8)
+#define PLUGIN_INPUTS_SCHEMA (1)
+#define PLUGIN_INPUTS_FLAG_TRUNCATED (0x1u)
+
+/* Set by every stage that stamps an identity table, INCLUDING when the table it
+ * stamps is empty. Without it, "a participating stage whose list is legitimately
+ * empty" and "a leaf frame nobody has stamped" are the same three zero fields,
+ * and a consumer must guess.
+ *
+ * Guessing gets it wrong in one specific, damaging way. A compositor rendering
+ * only its background slate with no inputs ready stamps an empty table; a reader
+ * that sees "no identities" and falls back to the frame's OWN frame_index then
+ * reports that stage's OUTPUT COUNTER as a media position -- the exact defect
+ * this whole mechanism exists to prevent, relocated into the consumer. With this
+ * flag the reader knows the answer is honestly "this stage contributed nothing
+ * identifiable", and reports nothing rather than a plausible-looking lie.
+ *
+ * One bit in a field that already exists, so this is NOT a layout change and
+ * costs nothing -- deliberately added BEFORE the ABI is republished, since doing
+ * it afterwards would be another coordinated four-repo change. */
+#define PLUGIN_INPUTS_FLAG_STAGE (0x2u)
+
+/* One contributing input's media identity on a composited output frame.
+ *
+ * `flow` is deliberately absent: a fixed C layout cannot carry a
+ * variable-length string, and the sender already knows which flow each panel
+ * id carries from its own topology config. The JSON on the wire still has a
+ * `flow` field -- only its source changes. */
+typedef struct PluginFrameInput
+{
+    uint32_t id;                  /* panel / stream position in the stage's input
+                                   * list. The ORIGINAL index, so it keeps naming
+                                   * the same panel when a neighbour drops out. */
+    uint32_t reserved;            /* explicit padding, keeps 8-byte alignment.
+                                   * Named rather than implicit so both the C
+                                   * static_asserts and the Rust mirror describe
+                                   * the same 24 bytes. */
+    uint64_t frame_index;         /* the INPUT's index in the INPUT's stream.
+                                   * 0 IS A VALID INDEX -- never treat it as
+                                   * "unset" (phrame-builder#15). */
+    uint64_t origination_time_ns; /* TAI ns since 1970, as origination_time */
+} PluginFrameInput;
+
 typedef struct PluginFrame
 {
     // DataType held in Frame
@@ -194,6 +256,31 @@ typedef struct PluginFrame
 
     /* filled in by each step a frame is processed through */
     PluginFrameTrace trace_steps[MAX_PLUGIN_TRACE_STEPS];
+
+    /* Contributing inputs' identities, appended by every multi-input stage.
+     * See the PluginFrameInput block above for why this is a list and not the
+     * single frame phrame_trace_inherit_oldest picks.
+     *
+     * Appended at the END of the struct on purpose: every offset above is
+     * unchanged, so this is additive for anything that only reads earlier
+     * fields. It is NOT free the way trace_schema/trace_flags were -- those two
+     * fitted in alignment padding that existed anyway, whereas this array is
+     * 192 real bytes and grows sizeof(PluginFrame) from 1040 to 1240. That
+     * makes it a genuine coordinated ABI change: plugin-api, phrame-common,
+     * phrame-common-rust and every consumer image must move together, and
+     * libvdi.so must be rebuilt and republished to the plugin-libs registry.
+     *
+     * Guarded exactly the way the trace is, because those guards are the only
+     * thing standing between a mismatch and silent memory corruption:
+     * inputs_schema is asserted by BOTH C++ and the hand-written Rust mirror in
+     * phrame-common-rust/src/lib.rs, the offsets and sizes are pinned by
+     * _Static_assert in tests/abi_layout_check.c and by matching #[test]s on
+     * the Rust side, and libvdi.so ships prebuilt so a disagreement is
+     * otherwise silent rather than a build failure. */
+    uint32_t inputs_used;
+    uint16_t inputs_schema;
+    uint16_t inputs_flags;
+    PluginFrameInput inputs[MAX_PLUGIN_FRAME_INPUTS];
 
 } PluginFrame;
 
