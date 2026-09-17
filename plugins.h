@@ -395,4 +395,39 @@ Handle: Handle for stream to access
 */
 typedef int64_t (*get_queue_depth_fn)(PLUGIN_HANDLE handle);
 
+/*
+Get plugin metrics as a JSON object.
+
+Returns metrics for one open stream so the host can publish them on a common
+channel across every plugin type. The payload is JSON rather than a struct on
+purpose: the metric set differs per plugin and grows over time, and a struct
+would make every new counter an ABI break for every plugin.
+
+The host calls this periodically; it must not block on I/O.
+
+Handle: Handle for stream to access
+buffer: Buffer to store the JSON (pre-allocated by the caller)
+buffer_size: Size of buffer in bytes, including room for the NUL
+
+Return: >= 0            number of bytes written, excluding the terminating NUL
+        prcSmallBuffer   the buffer was too small; nothing was written
+        < 0              other error code (PluginReturnCode)
+
+Unlike query_config_fn, this does NOT truncate and does NOT report the size
+required. query_config_fn's truncate-and-copy-bytes-returned convention is
+safe for its small, fixed config string, but truncated JSON is invalid JSON:
+a consumer would either fail to parse it, or worse, parse a truncated
+document as if it were complete. Returning prcSmallBuffer instead makes the
+failure explicit rather than silently handing back a malformed payload.
+Because the return value can no longer be read as "the size you needed,"
+callers should just pass a generously sized buffer up front; 64 KiB is
+recommended and comfortably covers any metrics payload in this API.
+
+OPTIONAL. A plugin that exports no metrics does not export this symbol at
+all; hosts must bind it optionally, as they already do for
+plugin_read_timeout, which MXL does not export.
+*/
+typedef int32_t (*query_stats_fn)(PLUGIN_HANDLE Handle, char *buffer,
+                                  uint32_t buffer_size);
+
 #endif  // PLUGINS_H_
